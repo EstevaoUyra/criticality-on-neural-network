@@ -3,20 +3,44 @@ from collections import defaultdict
 
 
 class Network(object):
-    def __init__(self, 
-                 v0, 
-                 W, 
-                 omega,
-                 history_variables=['v', 's']):
+    def __init__(self,
+                 W,
+                 v0 = None,
+                 omega = None,
+                 synaptic_efficacy = .3,
+                 history_variables=['s']):
         
         """
         Parameters
         ----------
-        
+        W : Square Array[Float] shaped (n_neurons, n_neurons)
+            Connectivity matrix.
+
+        v0 : Array[float] or None
+            The initial state of the neurons.
+            Defaults to all zeros
+
+        omega : Array[float] or None
+            The strength of each thalamic input.
+            Defaults to a deterministic 8/n_neurons
+
         history_variables: list of string
             Be careful with saving a lot of things.
             It may break RAM (especially saving W)
+            You can save s, v, omega, W, r, etc.
         """
+        self._n_neurons = W.shape[0]
+
+        # Set automatic values for nongiven variables
+        if omega is None:
+            omega = np.ones((self._n_neurons, 1)) * 8 / self._n_neurons
+        elif type(omega) is not np.ndarray:
+            omega = np.ones((self._n_neurons, 1)) * omega / self._n_neurons
+
+        if v0 is None:
+            v0 = np.zeros((self._n_neurons, 1))
+
+        # Set the network state variables
         self.v = v0
         self.s = np.zeros_like(v0)
         
@@ -26,15 +50,18 @@ class Network(object):
         self.omega = omega 
         self.r = None   
         self.s_thalamus = None  # Thalamic spikes
-        
-        self.tau_r = 400   # Recovery rate for short term depression
-        self.tau_d = 20    # Decay rate for short term depression
-        self.leakage = .2  # Equals 1 / membrane time constant tau m
-        
+
+        # Set network parameters
+        self.tau_r = 400       # Recovery rate for short term depression
+        self.tau_d = 20        # Decay rate for short term depression
+        self.leakage = .2      # Equals 1 / membrane time constant tau m
+        self.synaptic_efficacy = synaptic_efficacy
+
+        # Additional variables
         self.history_variables = history_variables
         self.history = defaultdict(lambda: [])
 
-    def spike(self, v, threshold=1):
+    def spike(self, v):
         s = (v >= np.random.rand(*v.shape)) # Probabilistic spike
         v[s] = 0
         return s, v
@@ -44,13 +71,13 @@ class Network(object):
         return nt # Neurotransmitters
 
     def synapse(self, nt):
-        dv = .3 * nt # Delta voltage
+        dv = self.synaptic_efficacy * nt  # Delta voltage
         return dv
 
     def external_input(self):
         self.s_thalamus = (np.random.rand(*self.v.shape) < self.r)
-        return self.s_thalamus*omega
-    
+        return self.s_thalamus * self.omega
+
     def plasticity(self):
         """
         There are two components in each update (equal for both W and omega)
